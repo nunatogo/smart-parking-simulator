@@ -1,5 +1,6 @@
-"""Demostración por consola del simulador (etapa 2)."""
+"""Entradas del simulador: consola por defecto o interfaz con --gui."""
 
+import argparse
 from queue import Empty
 
 from src.controllers.parking_controller import ParkingController
@@ -30,4 +31,12 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Simulador de parqueadero inteligente")
+    parser.add_argument("--gui", action="store_true", help="Abrir interfaz gráfica Tkinter")
+    args = parser.parse_args()
+    if args.gui:
+        from src.views.parking_gui import launch_gui
+
+        launch_gui()
+    else:
+        main()
