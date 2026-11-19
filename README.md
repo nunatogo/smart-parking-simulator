@@ -74,21 +74,52 @@ smart-parking-simulator/
 └── .gitignore
 ```
 
-## Ejecutar la etapa 2
+## Actualizar y ejecutar la etapa 2 (Windows / PowerShell)
 
-Desde la raiz del repositorio (con el entorno virtual seleccionado):
+Abre la terminal de **Visual Studio Code** en la raiz del repositorio. Si ya clonaste el proyecto, no es necesario volver a ejecutar \`git clone\`.
 
-```powershell
-.\\.venv\\Scripts\\python.exe main.py
-.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v
-```
+**1. Actualizar los archivos desde GitHub:**
 
-La demostracion inicia 10 hilos (vehiculos) para competir por 6 cupos, imprime eventos y presenta la ocupacion maxima. Las pruebas revisan capacidad, liberacion y detencion. Ninguna interfaz Tkinter esta implementada todavia.
+\`\`\`powershell
+git pull origin main
+\`\`\`
+
+**2. Ejecutar la simulacion por consola:**
+
+\`\`\`powershell
+.\.venv\Scripts\python.exe main.py
+\`\`\`
+
+**3. Ejecutar todas las pruebas automatizadas:**
+
+\`\`\`powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+\`\`\`
+
+Estos comandos usan directamente el Python del entorno virtual; no necesitas activar \`.venv\`. Si aun no existe, crealo con \`py -3.13 -m venv .venv\` (o utiliza \`-3.14\` si esa es tu version instalada).
+
+La simulacion crea **10 hilos de vehiculos que compiten por 6 cupos**. La salida muestra eventos de entrada y salida y un resumen con la ocupacion maxima, los vehiculos finalizados y el tiempo promedio de espera. La GUI Tkinter se implementara en una etapa posterior.
+
+### Clases de la etapa 2
+
+| Archivo | Responsabilidad |
+| --- | --- |
+| \`src/models/vehicle.py\` | Modelo \`Vehicle\`: identificador, estado, horas de llegada/ingreso/salida y tiempo de espera. Enum \`VehicleStatus\`. |
+| \`src/services/parking_service.py\` | \`ParkingService\`: capacidad, asignacion y liberacion de cupos; \`BoundedSemaphore\` limita entradas y \`Lock\` protege el estado. Publica \`ParkingEvent\` en una cola. |
+| \`src/controllers/parking_controller.py\` | \`ParkingController\`: crea un \`Thread\` por vehiculo, coordina llegadas y salidas, solicita detencion con \`Event\` y calcula indicadores. |
+| \`main.py\` | Punto de entrada por consola: ejecuta el escenario y muestra eventos y metricas. |
+
+### Pruebas automatizadas
+
+- \`tests/test_parking_service.py\`: valida capacidad positiva, cupos y liberacion, proteccion contra doble salida y vehiculos duplicados.
+- \`tests/test_concurrency.py\`: simula 10 vehiculos en 6 cupos, comprueba la liberacion despues de detener y evita iniciar dos veces el mismo controlador.
+
+**Importante:** que los archivos de prueba existan en GitHub no garantiza que hayan pasado en tu computador. Comprueba el resultado del comando \`unittest\` y revisa cualquier error antes de avanzar con la GUI.
 
 ## Proximas etapas
 
 1. [Completada] Logica de capacidad y vehiculos con estados.
-2. [Completada] Concurrencia segura usando `threading.Semaphore`, `threading.Lock`, `threading.Event` y `queue.Queue`.
+2. [Completada] Concurrencia segura usando `threading.BoundedSemaphore`, `threading.Lock`, `threading.Event` y `queue.Queue`.
 3. GUI Tkinter actualizada solo desde el hilo principal con `after()`.
 4. Pruebas de concurrencia, indicadores y logs.
 5. Informe PDF de dos paginas, captura y video explicativo de 3–5 minutos.
