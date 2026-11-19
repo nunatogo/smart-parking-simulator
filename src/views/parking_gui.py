@@ -1,7 +1,13 @@
-"""Interfaz gráfica Tkinter del simulador de parqueadero.
+"""Capa de presentación Tkinter para el parqueadero inteligente.
 
-Todos los widgets se actualizan exclusivamente desde el hilo principal.
-Los hilos de vehículos publican eventos a una Queue.
+Arquitectura:
+    - ParkingController administra hilos y ciclo de vida de vehículos.
+    - ParkingService sincroniza el acceso a los espacios.
+    - ParkingGUI únicamente lee snapshots y eventos mediante Queue.
+
+Tkinter no es seguro para modificaciones desde hilos secundarios:
+el bucle programado con root.after() ejecuta las actualizaciones de
+widgets en el hilo principal.
 """
 
 import csv
@@ -14,13 +20,30 @@ from src.controllers.parking_controller import ParkingController
 
 
 class ParkingGUI:
-    """Tablero del parqueadero y controles de simulación concurrente."""
+    """Representa visualmente capacidad, ocupación, estadísticas y eventos.
+
+    Las constantes de clase describen el escenario demostrativo:
+        CAPACITY: número máximo de vehículos estacionados.
+        INITIAL_VEHICLES: número de hilos al iniciar la simulación.
+        POLL_MS: intervalo, en milisegundos, para procesar eventos.
+
+    Los indicadores se actualizan desde una fotografía protegida por
+    ParkingService y los logs se alimentan desde eventos en Queue.
+    """
 
     CAPACITY = 6
     INITIAL_VEHICLES = 10
     POLL_MS = 100
 
     def __init__(self, root: tk.Tk) -> None:
+        """Configura la ventana principal y registra el sondeo periódico.
+
+        Args:
+            root: Ventana raíz de Tkinter, creada en el hilo principal.
+
+        _closing y _reset_pending permiten esperar la finalización
+        cooperativa de los hilos sin bloquear la interfaz.
+        """
         self.root = root
         self.root.title("Smart Parking Simulator | Universidad EAN")
         self.root.geometry("1000x760")
@@ -40,6 +63,13 @@ class ParkingGUI:
         self.root.after(self.POLL_MS, self._poll_events)
 
     def _new_controller(self) -> ParkingController:
+        """Crea una sesión independiente con los parámetros de demostración.
+
+        Los tiempos de llegada y permanencia son mayores que los de las
+        pruebas para que los cambios sean visibles durante la exposición.
+        Reiniciar requiere otra instancia porque cada controlador se
+        inicia una sola vez.
+        """
         # Tiempos deliberadamente visibles para la demostración de la GUI.
         return ParkingController(
             capacity=self.CAPACITY,
@@ -49,6 +79,12 @@ class ParkingGUI:
         )
 
     def _build_interface(self) -> None:
+        """Construye cabecera, indicadores, cupos, botones y registro.
+
+        Los StringVar permiten refrescar valores sin recrear etiquetas.
+        Cada tarjeta representa una métrica consultada periódicamente.
+        Todos los componentes se construyen en el hilo Tkinter.
+        """
         header = tk.Frame(self.root, bg="#183153", padx=22, pady=18)
         header.pack(fill="x")
         tk.Label(
@@ -149,6 +185,11 @@ class ParkingGUI:
         self._update_buttons()
 
     def _log(self, message: str) -> None:
+        """Agrega una línea con hora local al registro visual.
+
+        El control ScrolledText se habilita solo para insertar y luego
+        vuelve a modo de solo lectura; no se llama desde hilos de vehículo.
+        """
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_box.configure(state="normal")
         self.log_box.insert("end", f"[{timestamp}] {message}\n")
@@ -156,6 +197,11 @@ class ParkingGUI:
         self.log_box.configure(state="disabled")
 
     def _start(self) -> None:
+        """Inicia una sesión con los vehículos definidos en INITIAL_VEHICLES.
+
+        Captura validaciones del controlador y evita iniciar de nuevo
+        sobre una misma instancia.
+        """
         try:
             self.controller.start(vehicle_count=self.INITIAL_VEHICLES)
         except (ValueError, RuntimeError) as error:
@@ -166,6 +212,11 @@ class ParkingGUI:
         self._update_buttons()
 
     def _add_vehicle(self) -> None:
+        """Crea un vehículo adicional durante la simulación activa.
+
+        Su ingreso depende del semáforo; si todos los espacios están
+        ocupados, el hilo esperará hasta encontrar un cupo disponible.
+        """
         try:
             vehicle = self.controller.add_vehicle()
         except RuntimeError as error:
@@ -175,12 +226,22 @@ class ParkingGUI:
         self._update_buttons()
 
     def _stop(self) -> None:
+        """Solicita detener hilos sin bloquear la interfaz.
+
+        Event avisa a los vehículos que deben cancelar esperas o salir
+        de sus espacios; el sondeo posterior observa cuándo terminan.
+        """
         self.controller.stop()
         self.status_text.set("Deteniendo vehículos de forma segura...")
         self._log("Detención solicitada. Liberando espacios ocupados.")
         self._update_buttons()
 
     def _reset(self) -> None:
+        """Inicia un reinicio diferido y solicita la liberación de cupos.
+
+        No descarta de inmediato el controlador: _poll_events comprueba
+        primero que no queden hilos vivos, evitando recursos huérfanos.
+        """
         if self._reset_pending:
             return
         self._reset_pending = True
@@ -190,6 +251,11 @@ class ParkingGUI:
         self._update_buttons()
 
     def _finish_reset(self) -> None:
+        """Reemplaza la sesión ya detenida y limpia logs y métricas.
+
+        Debe invocarse únicamente cuando la instancia anterior no tenga
+        hilos activos. Los eventos previos se eliminan de la vista.
+        """
         self.controller = self._new_controller()
         self._reset_pending = False
         self._event_history.clear()
@@ -202,6 +268,12 @@ class ParkingGUI:
         self._update_buttons()
 
     def _poll_events(self) -> None:
+        """Consume eventos, refresca indicadores y gestiona cierre/reinicio.
+
+        El límite de eventos por ciclo evita saturar la interfaz en
+        escenarios de alta concurrencia. root.after() agenda la siguiente
+        iteración sin bloquear el event loop.
+        """
         # Se ejecuta solo en el hilo Tkinter, nunca desde los hilos de vehículos.
         for _ in range(150):
             try:
@@ -226,6 +298,13 @@ class ParkingGUI:
         self.root.after(self.POLL_MS, self._poll_events)
 
     def _refresh_view(self) -> None:
+        """Actualiza tarjetas y espacios desde un snapshot consistente.
+
+        Las métricas incluyen promedio de espera de finalizados, cupos
+        ocupados, porcentaje de ocupación y máximo alcanzado.
+        La alerta de parqueadero lleno se muestra al entrar a ese estado,
+        no en cada actualización periódica.
+        """
         state = self.controller.parking.snapshot()
         self.capacity_text.set(str(state["capacity"]))
         self.occupied_text.set(str(state["occupied"]))
@@ -253,6 +332,11 @@ class ParkingGUI:
                 )
 
     def _update_buttons(self) -> None:
+        """Habilita controles según inicio, detención, reinicio y eventos.
+
+        Iniciar se desactiva tras abrir una sesión; agregar y detener
+        requieren que esta siga activa. Exportar exige eventos disponibles.
+        """
         started = self.controller.started
         stopping = self.controller.stop_event.is_set()
         busy = self._reset_pending or self._closing
@@ -263,7 +347,13 @@ class ParkingGUI:
         self.export_button.configure(state="normal" if self._event_history and not busy else "disabled")
 
     def _export_csv(self) -> None:
-        """Exporta el historial recolectado por el hilo principal de Tkinter."""
+        """Exporta eventos de la sesión mediante un cuadro para guardar.
+
+        El CSV contiene marca temporal de recepción, tipo, vehículo,
+        espacio, ocupación, capacidad y mensaje. UTF-8 con BOM facilita
+        abrir el resultado en Excel. Los errores de escritura se muestran
+        sin interrumpir la simulación.
+        """
         if not self._event_history:
             messagebox.showinfo("Sin eventos", "Inicia la simulación antes de exportar.")
             return
@@ -293,6 +383,11 @@ class ParkingGUI:
         messagebox.showinfo("Exportación completada", "El archivo CSV se guardó correctamente.")
 
     def _on_close(self) -> None:
+        """Solicita cierre cooperativo y evita destruir widgets prematuramente.
+
+        _poll_events destruirá la ventana solamente después de que
+        todos los hilos hayan terminado.
+        """
         if self._closing:
             return
         self._closing = True
@@ -303,6 +398,10 @@ class ParkingGUI:
 
 
 def launch_gui() -> None:
+    """Crea la ventana Tkinter e inicia el bucle principal de eventos.
+
+    Esta función debe ejecutarse desde el hilo principal de Python.
+    """
     root = tk.Tk()
     ParkingGUI(root)
     root.mainloop()
