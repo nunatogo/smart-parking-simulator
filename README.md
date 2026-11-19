@@ -6,7 +6,7 @@ Simulador de parqueadero inteligente con hilos de Python, sincronizacion mediant
 
 ## Estado del proyecto
 
-**Etapa 3: interfaz grafica Tkinter implementada (pendiente de validacion local).** Incluye tablero de cupos, registro de eventos y controles para iniciar, agregar vehiculos, detener y reiniciar. Se conservan la simulacion por consola y las pruebas de concurrencia.
+**Etapa 4: metricas, exportacion CSV y pruebas de carga implementadas; pendientes de validacion local.** La interfaz Tkinter fue ejecutada correctamente por la estudiante y las 10 pruebas de la etapa 3 pasaron en Windows.
 
 ## Requisitos
 
@@ -119,6 +119,7 @@ La simulacion por consola crea **10 hilos de vehiculos que compiten por 6 cupos*
 
 - `tests/test_parking_service.py`: valida capacidad positiva, cupos y liberacion, proteccion contra doble salida y vehiculos duplicados.
 - `tests/test_concurrency.py`: simula 10 vehiculos en 6 cupos, comprueba la liberacion despues de detener y evita iniciar dos veces el mismo controlador.\n- `tests/test_dynamic_vehicles.py`: comprueba agregar vehiculos en una sesion activa, impedir adiciones despues de detener y permitir sesiones nuevas con otro controlador.
+- `tests/test_metrics.py`: valida estadisticas de ocupacion, espera, liberacion, carga de 50 vehiculos y detencion concurrente.
 
 **Importante:** que los archivos de prueba existan en GitHub no garantiza que hayan pasado en tu computador. Comprueba el resultado del comando `unittest` y revisa cualquier error antes de avanzar con la GUI.
 
@@ -126,8 +127,8 @@ La simulacion por consola crea **10 hilos de vehiculos que compiten por 6 cupos*
 
 1. [Completada] Logica de capacidad y vehiculos con estados.
 2. [Completada] Concurrencia segura usando `threading.BoundedSemaphore`, `threading.Lock`, `threading.Event` y `queue.Queue`.
-3. [Implementada, pendiente de comprobacion visual en Windows] GUI Tkinter actualizada solo desde el hilo principal con `after()`.
-4. Completar pruebas de GUI y funciones adicionales (metricas avanzadas, CSV, mejoras visuales).
+3. [Validacion inicial correcta en Windows] GUI Tkinter actualizada solo desde el hilo principal con `after()`.
+4. [Implementada, pendiente de pruebas nuevas en Windows] Metricas en vivo, alerta visual de lleno, exportacion CSV y pruebas de carga.
 5. Informe PDF de dos paginas, captura y video explicativo de 3–5 minutos.
 
 ## Nota
@@ -141,9 +142,30 @@ Nunca subir `.venv/`, archivos temporales ni datos personales al repositorio.
 - **Detener:** solicita cancelacion cooperativa; los vehiculos estacionados liberan sus cupos antes de terminar.
 - **Reiniciar:** detiene y espera la salida de todos los hilos antes de recrear el controlador y limpiar los indicadores.
 - **Cerrar ventana:** solicita una salida segura antes de destruir la GUI.
+- **Exportar CSV:** guarda eventos de la sesion actual; el archivo incluye fecha/hora, tipo, vehiculo, espacio y ocupacion.
 
 Los hilos secundarios no modifican directamente widgets de Tkinter. Publican eventos y el hilo principal los consume con `after()`. El boton de reinicio no debe ejecutarse hasta que se liberen todos los cupos.
 
 ## Validacion pendiente
 
-Las siete pruebas de la etapa 2 fueron ejecutadas correctamente por la estudiante en Windows. Las nuevas pruebas y el funcionamiento visual deben comprobarse despues de `git pull origin main` usando los comandos anteriores. Al informar incidencias, copia el error de la terminal o adjunta una captura.
+Las **10 pruebas de la etapa 3** fueron ejecutadas correctamente por la estudiante en Windows y la GUI se abrio bien. Las **4 pruebas nuevas** de la etapa 4 y sus interacciones visuales requieren nueva comprobacion local. Al informar incidencias, copia el error de la terminal o adjunta una captura.
+
+## Etapa 4: estadisticas e historial
+
+- **Atendidos:** vehiculos que completaron su estancia y salieron.
+- **Espera promedio:** segundos transcurridos entre la llegada registrada y la entrada, calculados para vehiculos finalizados.
+- **Ocupacion:** porcentaje de espacios ocupados en el momento de consulta.
+- **Maxima ocupacion:** mayor cantidad simultanea de vehiculos estacionados.
+- **Alerta de lleno:** mensaje en el registro cuando se alcanza la capacidad.
+- **Exportacion CSV:** boton **Exportar CSV**, habilitado si existen eventos de la sesion actual. Usa el selector de archivos de Windows y codificacion UTF-8 con BOM para mejorar la lectura en Excel.
+
+### Comprobaciones manuales sugeridas
+
+1. Ejecuta `.\.venv\Scripts\python.exe main.py --gui` y selecciona **Iniciar simulacion**.
+2. Comprueba que los contadores cambian, que ocupados + libres = 6 y que la ocupacion nunca supera 100%.
+3. Agrega vehiculos mientras la simulacion esta activa y comprueba los eventos de entrada y salida.
+4. Haz clic en **Exportar CSV** y abre el resultado en Excel; comprueba encabezados y registros.
+5. Selecciona **Detener** y luego **Reiniciar**; verifica que todos los espacios queden libres y se limpien los eventos.
+6. Ejecuta todas las pruebas: `.\.venv\Scripts\python.exe -m unittest discover -s tests -v`.
+
+No se ha validado aun el renderizado de la nueva version en Windows. No se necesita instalar bibliotecas externas.
