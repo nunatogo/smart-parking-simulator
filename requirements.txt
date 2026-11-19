@@ -1,0 +1,2 @@
+# Etapa 1: no hay dependencias externas.
+# tkinter, threading, queue y unittest pertenecen a la biblioteca estandar.
