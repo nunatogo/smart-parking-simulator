@@ -23,8 +23,8 @@ class ParkingGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Smart Parking Simulator | Universidad EAN")
-        self.root.geometry("940x700")
-        self.root.minsize(760, 610)
+        self.root.geometry("1000x760")
+        self.root.minsize(800, 650)
         self.root.configure(bg="#eff3f9")
 
         self.controller = self._new_controller()
@@ -73,7 +73,7 @@ class ParkingGUI:
         self.average_wait_text = tk.StringVar()
         self.peak_text = tk.StringVar()
         self.occupancy_text = tk.StringVar()
-        for title, variable in (
+        for position, (title, variable) in enumerate((
             ("CAPACIDAD", self.capacity_text),
             ("OCUPADOS", self.occupied_text),
             ("LIBRES", self.available_text),
@@ -82,10 +82,9 @@ class ParkingGUI:
             ("ESPERA PROM.", self.average_wait_text),
             ("OCUPACIÓN", self.occupancy_text),
             ("MÁX. OCUPACIÓN", self.peak_text),
-        ):
+        )):
             card = tk.Frame(metrics, bg="white", padx=15, pady=12, highlightthickness=1,
                             highlightbackground="#dce3ee")
-            position = len(metrics.winfo_children()) // 3
             card.grid(row=position // 4, column=position % 4,
                       sticky="nsew", padx=4, pady=4)
             tk.Label(card, text=title, bg="white", fg="#53657b",
