@@ -6,7 +6,7 @@ Simulador de parqueadero inteligente con hilos de Python, sincronizacion mediant
 
 ## Estado del proyecto
 
-**Etapa 1: preparacion del entorno y estructura del repositorio.** La logica del simulador y la interfaz definitiva aun no estan implementadas.
+**Etapa 2: logica del parqueadero implementada.** Incluye vehiculos, semaforo de capacidad, lock, controlador de hilos, eventos y pruebas. La GUI Tkinter se realizara en la etapa 4.
 
 ## Requisitos
 
@@ -59,7 +59,7 @@ Abre la carpeta en VS Code (`code .`) y selecciona **Python: Select Interpreter 
 
 ```text
 smart-parking-simulator/
-├── main.py                   # Punto de entrada (etapas siguientes)
+├── main.py                   # Simulacion concurrente por consola
 ├── src/
 │   ├── models/               # Vehiculos y estados
 │   ├── services/             # Cupos, semaforos, locks, eventos
@@ -67,17 +67,28 @@ smart-parking-simulator/
 │   └── views/                # GUI Tkinter
 ├── scripts/
 │   └── check_environment.py  # Diagnostico de Python y Tkinter
-├── tests/                    # Pruebas del simulador
+├── tests/                    # Pruebas de capacidad y concurrencia
 ├── docs/                     # Informe y capturas
 ├── logs/                     # Archivos de eventos generados (ignorados por Git)
 ├── requirements.txt          # Sin dependencias externas en etapa 1
 └── .gitignore
 ```
 
+## Ejecutar la etapa 2
+
+Desde la raiz del repositorio (con el entorno virtual seleccionado):
+
+```powershell
+.\\.venv\\Scripts\\python.exe main.py
+.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v
+```
+
+La demostracion inicia 10 hilos (vehiculos) para competir por 6 cupos, imprime eventos y presenta la ocupacion maxima. Las pruebas revisan capacidad, liberacion y detencion. Ninguna interfaz Tkinter esta implementada todavia.
+
 ## Proximas etapas
 
-1. Logica de capacidad y vehiculos con estados.
-2. Concurrencia segura usando `threading.Semaphore`, `threading.Lock`, `threading.Event` y `queue.Queue`.
+1. [Completada] Logica de capacidad y vehiculos con estados.
+2. [Completada] Concurrencia segura usando `threading.Semaphore`, `threading.Lock`, `threading.Event` y `queue.Queue`.
 3. GUI Tkinter actualizada solo desde el hilo principal con `after()`.
 4. Pruebas de concurrencia, indicadores y logs.
 5. Informe PDF de dos paginas, captura y video explicativo de 3–5 minutos.
