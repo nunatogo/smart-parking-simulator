@@ -59,6 +59,15 @@ class ParkingService:
                 "spaces": dict(self._spaces),
                 "statuses": {vid: v.status.value for vid, v in self._vehicles.items()},
                 "max_occupancy": self.max_occupancy,
+                "completed": sum(v.status == VehicleStatus.FINISHED for v in self._vehicles.values()),
+                "cancelled": sum(v.status == VehicleStatus.CANCELLED for v in self._vehicles.values()),
+                "average_wait_seconds": (
+                    sum(v.wait_time for v in self._vehicles.values()
+                        if v.status == VehicleStatus.FINISHED)
+                    / max(1, sum(v.status == VehicleStatus.FINISHED
+                                 for v in self._vehicles.values()))
+                ),
+                "occupancy_percent": 100 * len(self._spaces) / self.capacity,
             }
 
     def register(self, vehicle: Vehicle) -> None:
