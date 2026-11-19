@@ -4,10 +4,11 @@ Todos los widgets se actualizan exclusivamente desde el hilo principal.
 Los hilos de vehículos publican eventos a una Queue.
 """
 
+import csv
 import tkinter as tk
 from datetime import datetime
 from queue import Empty
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from src.controllers.parking_controller import ParkingController
 
@@ -30,6 +31,8 @@ class ParkingGUI:
         self._closing = False
         self._reset_pending = False
         self._space_labels: dict[int, tk.Label] = {}
+        self._event_history: list[tuple[str, object]] = []
+        self._full_alert_shown = False
 
         self._build_interface()
         self._refresh_view()
@@ -66,19 +69,32 @@ class ParkingGUI:
         self.occupied_text = tk.StringVar()
         self.available_text = tk.StringVar()
         self.waiting_text = tk.StringVar()
+        self.completed_text = tk.StringVar()
+        self.average_wait_text = tk.StringVar()
+        self.peak_text = tk.StringVar()
+        self.occupancy_text = tk.StringVar()
         for title, variable in (
             ("CAPACIDAD", self.capacity_text),
             ("OCUPADOS", self.occupied_text),
             ("LIBRES", self.available_text),
             ("EN ESPERA", self.waiting_text),
+            ("ATENDIDOS", self.completed_text),
+            ("ESPERA PROM.", self.average_wait_text),
+            ("OCUPACIÓN", self.occupancy_text),
+            ("MÁX. OCUPACIÓN", self.peak_text),
         ):
             card = tk.Frame(metrics, bg="white", padx=15, pady=12, highlightthickness=1,
                             highlightbackground="#dce3ee")
-            card.pack(side="left", fill="x", expand=True, padx=4)
+            position = len(metrics.winfo_children()) // 3
+            card.grid(row=position // 4, column=position % 4,
+                      sticky="nsew", padx=4, pady=4)
             tk.Label(card, text=title, bg="white", fg="#53657b",
                      font=("Segoe UI", 9, "bold")).pack()
             tk.Label(card, textvariable=variable, bg="white", fg="#183153",
                      font=("Segoe UI", 22, "bold")).pack()
+
+        for column in range(4):
+            metrics.columnconfigure(column, weight=1)
 
         tk.Label(content, text="Espacios del parqueadero",
                  font=("Segoe UI", 14, "bold"), bg="#eff3f9",
@@ -110,10 +126,13 @@ class ParkingGUI:
         self.stop_button = ttk.Button(
             control_frame, text="Detener", command=self._stop
         )
+        self.export_button = ttk.Button(
+            control_frame, text="Exportar CSV", command=self._export_csv
+        )
         self.reset_button = ttk.Button(
             control_frame, text="Reiniciar", command=self._reset
         )
-        for button in (self.start_button, self.add_button, self.stop_button, self.reset_button):
+        for button in (self.start_button, self.add_button, self.stop_button, self.reset_button, self.export_button):
             button.pack(side="left", padx=(0, 9))
 
         self.status_text = tk.StringVar(value="Lista para iniciar")
@@ -174,6 +193,8 @@ class ParkingGUI:
     def _finish_reset(self) -> None:
         self.controller = self._new_controller()
         self._reset_pending = False
+        self._event_history.clear()
+        self._full_alert_shown = False
         self.log_box.configure(state="normal")
         self.log_box.delete("1.0", "end")
         self.log_box.configure(state="disabled")
@@ -188,6 +209,7 @@ class ParkingGUI:
                 event = self.controller.events.get_nowait()
             except Empty:
                 break
+            self._event_history.append((datetime.now().isoformat(timespec="seconds"), event))
             self._log(f"{event.message} | ocupación: {event.occupied}/{event.capacity}")
 
         self._refresh_view()
@@ -209,6 +231,15 @@ class ParkingGUI:
         self.capacity_text.set(str(state["capacity"]))
         self.occupied_text.set(str(state["occupied"]))
         self.available_text.set(str(state["available"]))
+        self.completed_text.set(str(state["completed"]))
+        self.average_wait_text.set(f'{state["average_wait_seconds"]:.2f} s')
+        self.occupancy_text.set(f'{state["occupancy_percent"]:.0f}%')
+        self.peak_text.set(f'{state["max_occupancy"]}/{state["capacity"]}')
+        if state["occupied"] == state["capacity"] and not self._full_alert_shown:
+            self._full_alert_shown = True
+            self._log("ALERTA: Parqueadero lleno. Nuevos vehículos deberán esperar.")
+        elif state["occupied"] < state["capacity"]:
+            self._full_alert_shown = False
         self.waiting_text.set(str(sum(
             status == "esperando" for status in state["statuses"].values()
         )))
@@ -230,6 +261,37 @@ class ParkingGUI:
         self.add_button.configure(state="normal" if started and not stopping and not busy else "disabled")
         self.stop_button.configure(state="normal" if started and not stopping and not busy else "disabled")
         self.reset_button.configure(state="disabled" if busy else "normal")
+        self.export_button.configure(state="normal" if self._event_history and not busy else "disabled")
+
+    def _export_csv(self) -> None:
+        """Exporta el historial recolectado por el hilo principal de Tkinter."""
+        if not self._event_history:
+            messagebox.showinfo("Sin eventos", "Inicia la simulación antes de exportar.")
+            return
+        filename = filedialog.asksaveasfilename(
+            title="Exportar historial del parqueadero",
+            defaultextension=".csv",
+            filetypes=[("Archivos CSV", "*.csv")],
+            initialfile="smart_parking_events.csv",
+        )
+        if not filename:
+            return
+        try:
+            with open(filename, "w", newline="", encoding="utf-8-sig") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["fecha_hora", "tipo", "vehiculo_id",
+                                 "espacio", "ocupados", "capacidad", "mensaje"])
+                for recorded_at, event in self._event_history:
+                    writer.writerow([
+                        recorded_at, event.kind, event.vehicle_id,
+                        event.space if event.space is not None else "",
+                        event.occupied, event.capacity, event.message,
+                    ])
+        except OSError as error:
+            messagebox.showerror("No se pudo exportar", str(error))
+            return
+        self._log(f"Historial exportado: {filename}")
+        messagebox.showinfo("Exportación completada", "El archivo CSV se guardó correctamente.")
 
     def _on_close(self) -> None:
         if self._closing:
