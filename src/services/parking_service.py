@@ -1,4 +1,9 @@
-"""Gestión segura de los espacios de un parqueadero concurrente."""
+"""Gestión concurrente de cupos y comunicación de eventos.
+
+Este módulo es el equivalente a la administración de recursos de un
+sistema operativo: un semáforo limita la cantidad de accesos simultáneos
+y un lock protege las secciones críticas que modifican el estado.
+"""
 
 from dataclasses import dataclass
 from queue import Queue
@@ -11,7 +16,20 @@ from src.models.vehicle import Vehicle, VehicleStatus
 
 @dataclass(frozen=True)
 class ParkingEvent:
-    """Evento consumible por consola o por la futura interfaz Tkinter."""
+    """Registro inmutable de una transición del parqueadero.
+
+    Attributes:
+        kind: Tipo de evento (waiting, entered, left, cancelled).
+        vehicle_id: Identificador del vehículo involucrado.
+        occupied: Cantidad de cupos ocupados al emitir el evento.
+        capacity: Capacidad total del parqueadero.
+        timestamp: Instante monotónico del evento.
+        message: Descripción legible para consola o GUI.
+        space: Cupo relacionado, cuando aplica.
+
+    Los eventos viajan por Queue para que la GUI no sea modificada
+    desde los hilos de vehículos.
+    """
 
     kind: str
     vehicle_id: int
@@ -23,13 +41,25 @@ class ParkingEvent:
 
 
 class ParkingService:
-    """Administra cupos con semáforo y protege cambios con Lock.
+    """Fuente central de verdad sobre ocupación y estados.
 
-    Un vehículo solo puede ocupar un cupo después de adquirir el semáforo.
-    El lock mantiene consistente el contador, los lugares y los estados.
+    BoundedSemaphore(capacity) controla cuántos vehículos pueden
+    estacionarse a la vez. Lock serializa la actualización del mapa
+    espacio -> vehículo y de los estados; estas operaciones forman
+    secciones críticas. Los métodos públicos son utilizados desde hilos
+    distintos, por lo que nunca se deben manipular _spaces o _vehicles
+    directamente desde el controlador o la interfaz.
     """
 
     def __init__(self, capacity: int, events: Optional[Queue] = None) -> None:
+        """Inicializa cupos, herramientas de sincronización y cola de eventos.
+
+        Args:
+            capacity: Número positivo de plazas.
+            events: Cola compartida opcional; se crea una si no se recibe.
+        Raises:
+            ValueError: Si capacity no es positivo.
+        """
         if capacity <= 0:
             raise ValueError("La capacidad debe ser mayor que cero.")
         self.capacity = capacity
@@ -42,15 +72,23 @@ class ParkingService:
 
     @property
     def occupied(self) -> int:
+        """Cantidad actual de cupos ocupados, leída bajo exclusión mutua."""
         with self._lock:
             return len(self._spaces)
 
     @property
     def available(self) -> int:
+        """Cupos disponibles calculados a partir de la ocupación segura."""
         return self.capacity - self.occupied
 
     def snapshot(self) -> dict:
-        """Devuelve un estado seguro para visualizar o comprobar."""
+        """Obtiene una fotografía consistente para UI, métricas y pruebas.
+
+        Returns:
+            Diccionario con capacidad, ocupación, espacios, estados,
+            estadísticas de vehículos terminados y porcentaje de uso.
+            La media de espera incluye solo vehículos finalizados.
+        """
         with self._lock:
             return {
                 "capacity": self.capacity,
@@ -71,6 +109,13 @@ class ParkingService:
             }
 
     def register(self, vehicle: Vehicle) -> None:
+        """Registra la llegada e inicia el estado WAITING.
+
+        Args:
+            vehicle: Instancia aún no registrada.
+        Raises:
+            ValueError: Si el identificador ya está registrado.
+        """
         with self._lock:
             if vehicle.vehicle_id in self._vehicles:
                 raise ValueError("ID de vehículo duplicado.")
@@ -80,9 +125,20 @@ class ParkingService:
             self._emit_locked("waiting", vehicle, "está esperando un cupo")
 
     def enter(self, vehicle: Vehicle, stop: Event, poll_interval: float = 0.05) -> bool:
-        """Espera por un cupo; retorna False cuando se solicita detener.
+        """Solicita un cupo sin perder capacidad de cancelación.
 
-        acquire(timeout=...) evita una espera indefinida al detener.
+        El semáforo autoriza la entrada antes de asignar un espacio.
+        Tras adquirirlo, el lock impide que dos hilos asignen el mismo
+        espacio. Si se solicita detener, se devuelve el permiso obtenido.
+
+        Args:
+            vehicle: Vehículo registrado con estado WAITING.
+            stop: Evento que solicita la detención cooperativa.
+            poll_interval: Tiempo máximo, en segundos, por intento acquire.
+        Returns:
+            True si se asignó el cupo; False si llegó la detención.
+        Raises:
+            ValueError: Si el intervalo o el estado del vehículo es inválido.
         """
         if poll_interval <= 0:
             raise ValueError("poll_interval debe ser positivo.")
@@ -111,7 +167,15 @@ class ParkingService:
         return False
 
     def leave(self, vehicle: Vehicle) -> None:
-        """Libera exactamente una vez el cupo ocupado por el vehículo."""
+        """Finaliza el estacionamiento y devuelve un permiso al semáforo.
+
+        Dentro del lock elimina la asignación, marca al vehículo como
+        FINISHED y emite un evento. Evita una doble liberación, que
+        desconfiguraría el control de capacidad.
+        Raises:
+            ValueError: Si el vehículo no está estacionado.
+            RuntimeError: Si la asignación interna es inconsistente.
+        """
         with self._lock:
             if vehicle.status != VehicleStatus.PARKED or vehicle.assigned_space is None:
                 raise ValueError("El vehículo no está estacionado.")
@@ -126,13 +190,23 @@ class ParkingService:
             self._semaphore.release()
 
     def cancel(self, vehicle: Vehicle) -> None:
-        """Marca un vehículo no estacionado como cancelado."""
+        """Cancela una solicitud antes de ingresar.
+
+        Los vehículos estacionados deben salir usando leave(), porque
+        solamente ese método devuelve el cupo que ocuparon.
+        """
         with self._lock:
             if vehicle.status in (VehicleStatus.CREATED, VehicleStatus.WAITING):
                 vehicle.status = VehicleStatus.CANCELLED
                 self._emit_locked("cancelled", vehicle, "cancelado")
 
     def _emit_locked(self, kind: str, vehicle: Vehicle, message: str, space: Optional[int] = None) -> None:
+        """Publica un evento en Queue mientras el estado está protegido.
+
+        Uso interno: quien invoque este método debe mantener _lock.
+        Así la ocupación incluida en el evento es consistente con el
+        cambio de estado que acaba de producirse.
+        """
         self.events.put(ParkingEvent(
             kind=kind,
             vehicle_id=vehicle.vehicle_id,
