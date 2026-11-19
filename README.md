@@ -6,7 +6,7 @@ Simulador de parqueadero inteligente con hilos de Python, sincronizacion mediant
 
 ## Estado del proyecto
 
-**Etapa 2: logica del parqueadero implementada.** Incluye vehiculos, semaforo de capacidad, lock, controlador de hilos, eventos y pruebas. La GUI Tkinter se realizara en la etapa 4.
+**Etapa 3: interfaz grafica Tkinter implementada (pendiente de validacion local).** Incluye tablero de cupos, registro de eventos y controles para iniciar, agregar vehiculos, detener y reiniciar. Se conservan la simulacion por consola y las pruebas de concurrencia.
 
 ## Requisitos
 
@@ -64,7 +64,7 @@ smart-parking-simulator/
 │   ├── models/               # Vehiculos y estados
 │   ├── services/             # Cupos, semaforos, locks, eventos
 │   ├── controllers/          # Coordinacion de la simulacion
-│   └── views/                # GUI Tkinter
+│   └── views/                # GUI Tkinter (parking_gui.py)
 ├── scripts/
 │   └── check_environment.py  # Diagnostico de Python y Tkinter
 ├── tests/                    # Pruebas de capacidad y concurrencia
@@ -90,7 +90,13 @@ git pull origin main
 .\.venv\Scripts\python.exe main.py
 ```
 
-**3. Ejecutar todas las pruebas automatizadas:**
+**3. Abrir el parqueadero con interfaz Tkinter:**
+
+```powershell
+.\.venv\Scripts\python.exe main.py --gui
+```
+
+**4. Ejecutar todas las pruebas automatizadas:**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
@@ -98,7 +104,7 @@ git pull origin main
 
 Estos comandos usan directamente el Python del entorno virtual; no necesitas activar `.venv`. Si aun no existe, crealo con `py -3.13 -m venv .venv` (o utiliza `-3.14` si esa es tu version instalada).
 
-La simulacion crea **10 hilos de vehiculos que compiten por 6 cupos**. La salida muestra eventos de entrada y salida y un resumen con la ocupacion maxima, los vehiculos finalizados y el tiempo promedio de espera. La GUI Tkinter se implementara en una etapa posterior.
+La simulacion por consola crea **10 hilos de vehiculos que compiten por 6 cupos**. La salida muestra eventos de entrada y salida y un resumen con la ocupacion maxima, los vehiculos finalizados y el tiempo promedio de espera. La GUI presenta el mismo concepto visualmente. Los tiempos de llegada y estacionamiento son mayores en la GUI para poder observar los cambios.
 
 ### Clases de la etapa 2
 
@@ -107,12 +113,12 @@ La simulacion crea **10 hilos de vehiculos que compiten por 6 cupos**. La salida
 | `src/models/vehicle.py` | Modelo `Vehicle`: identificador, estado, horas de llegada/ingreso/salida y tiempo de espera. Enum `VehicleStatus`. |
 | `src/services/parking_service.py` | `ParkingService`: capacidad, asignacion y liberacion de cupos; `BoundedSemaphore` limita entradas y `Lock` protege el estado. Publica `ParkingEvent` en una cola. |
 | `src/controllers/parking_controller.py` | `ParkingController`: crea un `Thread` por vehiculo, coordina llegadas y salidas, solicita detencion con `Event` y calcula indicadores. |
-| `main.py` | Punto de entrada por consola: ejecuta el escenario y muestra eventos y metricas. |
+| `main.py` | Punto de entrada: consola por defecto o GUI con `--gui`. |\n| `src/views/parking_gui.py` | Panel Tkinter con ocupacion, cupos, registros, botones y lectura de `queue.Queue` con `after()` en el hilo principal. |
 
 ### Pruebas automatizadas
 
 - `tests/test_parking_service.py`: valida capacidad positiva, cupos y liberacion, proteccion contra doble salida y vehiculos duplicados.
-- `tests/test_concurrency.py`: simula 10 vehiculos en 6 cupos, comprueba la liberacion despues de detener y evita iniciar dos veces el mismo controlador.
+- `tests/test_concurrency.py`: simula 10 vehiculos en 6 cupos, comprueba la liberacion despues de detener y evita iniciar dos veces el mismo controlador.\n- `tests/test_dynamic_vehicles.py`: comprueba agregar vehiculos en una sesion activa, impedir adiciones despues de detener y permitir sesiones nuevas con otro controlador.
 
 **Importante:** que los archivos de prueba existan en GitHub no garantiza que hayan pasado en tu computador. Comprueba el resultado del comando `unittest` y revisa cualquier error antes de avanzar con la GUI.
 
@@ -120,10 +126,24 @@ La simulacion crea **10 hilos de vehiculos que compiten por 6 cupos**. La salida
 
 1. [Completada] Logica de capacidad y vehiculos con estados.
 2. [Completada] Concurrencia segura usando `threading.BoundedSemaphore`, `threading.Lock`, `threading.Event` y `queue.Queue`.
-3. GUI Tkinter actualizada solo desde el hilo principal con `after()`.
-4. Pruebas de concurrencia, indicadores y logs.
+3. [Implementada, pendiente de comprobacion visual en Windows] GUI Tkinter actualizada solo desde el hilo principal con `after()`.
+4. Completar pruebas de GUI y funciones adicionales (metricas avanzadas, CSV, mejoras visuales).
 5. Informe PDF de dos paginas, captura y video explicativo de 3–5 minutos.
 
 ## Nota
 
 Nunca subir `.venv/`, archivos temporales ni datos personales al repositorio.
+
+## Uso de los controles de la GUI
+
+- **Iniciar simulacion:** crea 10 vehiculos que intentan ocupar 6 espacios.
+- **Agregar vehiculo:** crea un nuevo hilo en la sesion activa, incluso si los primeros vehiculos ya finalizaron.
+- **Detener:** solicita cancelacion cooperativa; los vehiculos estacionados liberan sus cupos antes de terminar.
+- **Reiniciar:** detiene y espera la salida de todos los hilos antes de recrear el controlador y limpiar los indicadores.
+- **Cerrar ventana:** solicita una salida segura antes de destruir la GUI.
+
+Los hilos secundarios no modifican directamente widgets de Tkinter. Publican eventos y el hilo principal los consume con `after()`. El boton de reinicio no debe ejecutarse hasta que se liberen todos los cupos.
+
+## Validacion pendiente
+
+Las siete pruebas de la etapa 2 fueron ejecutadas correctamente por la estudiante en Windows. Las nuevas pruebas y el funcionamiento visual deben comprobarse despues de `git pull origin main` usando los comandos anteriores. Al informar incidencias, copia el error de la terminal o adjunta una captura.
