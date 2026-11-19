@@ -109,8 +109,23 @@ class ParkingGUI:
         content = tk.Frame(self.root, bg="#eff3f9", padx=20, pady=14)
         content.pack(fill="both", expand=True)
 
+        # Reservar primero el panel inferior evita que las tarjetas y
+        # los espacios consuman toda la altura disponible de la ventana.
+        log_panel = tk.Frame(content, bg="#eff3f9")
+        log_panel.pack(side="bottom", fill="both", expand=True)
+        tk.Label(
+            log_panel, text="Registro de eventos (ejecución de hilos)",
+            font=("Segoe UI", 13, "bold"), bg="#eff3f9",
+            fg="#183153",
+        ).pack(anchor="w", pady=(0, 5))
+        self.log_box = scrolledtext.ScrolledText(
+            log_panel, height=7, state="disabled", wrap="word",
+            font=("Consolas", 10), bg="white", fg="#27394d",
+        )
+        self.log_box.pack(fill="both", expand=True)
+
         metrics = tk.Frame(content, bg="#eff3f9")
-        metrics.pack(fill="x", pady=(0, 12))
+        metrics.pack(fill="x", pady=(0, 7))
         self.capacity_text = tk.StringVar()
         self.occupied_text = tk.StringVar()
         self.available_text = tk.StringVar()
@@ -129,7 +144,7 @@ class ParkingGUI:
             ("OCUPACIÓN", self.occupancy_text),
             ("MÁX. OCUPACIÓN", self.peak_text),
         )):
-            card = tk.Frame(metrics, bg="white", padx=15, pady=12, highlightthickness=1,
+            card = tk.Frame(metrics, bg="white", padx=15, pady=7, highlightthickness=1,
                             highlightbackground="#dce3ee")
             card.grid(row=position // 4, column=position % 4,
                       sticky="nsew", padx=4, pady=4)
@@ -150,7 +165,7 @@ class ParkingGUI:
         for index in range(1, self.CAPACITY + 1):
             label = tk.Label(
                 spaces_frame, text="", font=("Segoe UI", 12, "bold"),
-                width=17, height=4, bg="#d9f5e8", fg="#12674b",
+                width=17, height=3, bg="#d9f5e8", fg="#12674b",
                 relief="groove", bd=1,
             )
             label.grid(row=(index - 1) // 3, column=(index - 1) % 3,
@@ -160,7 +175,7 @@ class ParkingGUI:
             spaces_frame.columnconfigure(column, weight=1)
 
         control_frame = tk.Frame(content, bg="#eff3f9")
-        control_frame.pack(fill="x", pady=(15, 10))
+        control_frame.pack(fill="x", pady=(8, 7))
 
         self.start_button = ttk.Button(
             control_frame, text="Iniciar simulación", command=self._start
@@ -184,14 +199,6 @@ class ParkingGUI:
         tk.Label(content, textvariable=self.status_text, bg="#eff3f9",
                  fg="#42526a", font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 9))
 
-        tk.Label(content, text="Registro de eventos",
-                 font=("Segoe UI", 13, "bold"), bg="#eff3f9",
-                 fg="#183153").pack(anchor="w", pady=(0, 5))
-        self.log_box = scrolledtext.ScrolledText(
-            content, height=9, state="disabled", wrap="word",
-            font=("Consolas", 10), bg="white", fg="#27394d",
-        )
-        self.log_box.pack(fill="both", expand=True)
         self._update_buttons()
 
     def _log(self, message: str) -> None:
