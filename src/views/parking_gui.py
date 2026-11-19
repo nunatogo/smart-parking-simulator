@@ -96,6 +96,16 @@ class ParkingGUI:
             font=("Segoe UI", 10), bg="#183153", fg="#d9e7fa",
         ).pack(anchor="w")
 
+        # Pie de página fijo: permanece visible en la esquina inferior
+        # derecha aunque el panel principal crezca o se desplace.
+        footer = tk.Frame(self.root, bg="#183153", padx=18, pady=7)
+        footer.pack(side="bottom", fill="x")
+        tk.Label(
+            footer, text="@nunatogo  |  19/11/2026",
+            font=("Segoe UI", 9), bg="#183153", fg="#d9e7fa",
+            anchor="e",
+        ).pack(side="right")
+
         content = tk.Frame(self.root, bg="#eff3f9", padx=20, pady=14)
         content.pack(fill="both", expand=True)
 
