@@ -30,28 +30,50 @@ class ParkingController:
         self._threads: list[Thread] = []
         self._state_lock = Lock()
         self._started = False
+        self._next_vehicle_id = 1
         self._arrival_range = arrival_range
         self._parking_range = parking_range
         self._seed = seed
 
     def start(self, vehicle_count: int = 10) -> None:
-        """Crea un hilo por vehículo y comienza la simulación."""
+        """Inicia una única simulación, creando los primeros vehículos."""
         if vehicle_count < 0:
             raise ValueError("vehicle_count no puede ser negativo.")
         with self._state_lock:
             if self._started:
                 raise RuntimeError("Esta simulación ya fue iniciada.")
             self._started = True
-            self.vehicles = [Vehicle(i) for i in range(1, vehicle_count + 1)]
-            for vehicle in self.vehicles:
-                rng = Random(None if self._seed is None else self._seed + vehicle.vehicle_id)
-                thread = Thread(
-                    target=self._run_vehicle,
-                    args=(vehicle, rng.uniform(*self._arrival_range), rng.uniform(*self._parking_range)),
-                    name=f"vehicle-{vehicle.vehicle_id}",
-                )
-                self._threads.append(thread)
-                thread.start()
+        for _ in range(vehicle_count):
+            self.add_vehicle()
+
+    def add_vehicle(self) -> Vehicle:
+        """Agrega un vehículo a una simulación activa de forma segura."""
+        with self._state_lock:
+            if not self._started or self.stop_event.is_set():
+                raise RuntimeError("La simulación no está activa.")
+            vehicle = Vehicle(self._next_vehicle_id)
+            self._next_vehicle_id += 1
+            self.vehicles.append(vehicle)
+            rng = Random(None if self._seed is None else self._seed + vehicle.vehicle_id)
+            thread = Thread(
+                target=self._run_vehicle,
+                args=(vehicle, rng.uniform(*self._arrival_range), rng.uniform(*self._parking_range)),
+                name=f"vehicle-{vehicle.vehicle_id}",
+            )
+            self._threads.append(thread)
+            thread.start()
+            return vehicle
+
+    @property
+    def is_running(self) -> bool:
+        """Indica si existe al menos un hilo de vehículo activo."""
+        with self._state_lock:
+            return any(thread.is_alive() for thread in self._threads)
+
+    @property
+    def started(self) -> bool:
+        with self._state_lock:
+            return self._started
 
     def _run_vehicle(self, vehicle: Vehicle, arrival_delay: float, parking_delay: float) -> None:
         # El evento permite detener incluso durante la espera inicial.
